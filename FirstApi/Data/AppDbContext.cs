@@ -1,4 +1,5 @@
-﻿using FirstApi.Models;
+﻿using FirstApi.Configurations;
+using FirstApi.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace FirstApi.Data
@@ -9,20 +10,12 @@ namespace FirstApi.Data
         {
         }
         public DbSet<Product> Products { get; set; }
+        public DbSet<Category> Categories { get; set; }
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
-            base.OnModelCreating(builder);
-
-            builder.Entity<Product>().HasData
-                (
-                new Product { Id = 1, Name = "Product1", Price = 25.5, IsActive = true },
-                new Product { Id = 2, Name = "Product2", Price = 30.5, IsActive = true },
-                new Product { Id = 3, Name = "Product3", Price = 27, IsActive = false },
-                new Product { Id = 4, Name = "Product5", Price = 20, IsActive = true }
-                );
-
+            builder.ApplyConfiguration(new ProductConfiguration());
+            builder.ApplyConfiguration(new CategoryConfiguration());
         }
-
     }
 }

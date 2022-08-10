@@ -1,7 +1,13 @@
 ﻿using FirstApi.Data;
-using FirstApi.Models;
+using FirstApi.Data.Entities;
+using FirstApi.Dtos.ProductDtos;
+using FirstApi.Extentions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -12,16 +18,34 @@ namespace FirstApi.Controllers
     public class ProductController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IWebHostEnvironment _env;
 
-        public ProductController(AppDbContext context)
+
+        public ProductController(AppDbContext context, IWebHostEnvironment environment)
         {
             _context = context;
+            _env = environment;
         }
 
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
-            return StatusCode(200, await _context.Products.Where(p => p.IsActive).ToListAsync());
+            List<ProductReturnDto> products = await _context.Products.Where(p=>p.IsDeleted==false).Select(p => new ProductReturnDto
+            {
+                Name = p.Name,
+                Price = p.Price,
+                ImgUrl=p.ImgUrl,
+                Description = p.Description,
+                StockCount=p.Count,
+                IsActive = p.IsActive,
+            }).AsQueryable().ToListAsync();
+            ProductListDto productListDto = new ProductListDto()
+            {
+                items = products,
+                TotalCount = products.Count,
+            };
+
+            return StatusCode(200, productListDto);
         }
         /// <summary>
         /// get one product for id
@@ -39,6 +63,13 @@ namespace FirstApi.Controllers
 
             if (dbProd == null) return StatusCode(404, "Product Not Found");
 
+            ProductReturnDto productReturnDto = new ProductReturnDto()
+            {
+                Name = dbProd.Name,
+                Price = dbProd.Price,
+                IsActive = dbProd.IsActive,
+            };
+
             return StatusCode(200, dbProd);
         }
         /// <summary>
@@ -47,51 +78,113 @@ namespace FirstApi.Controllers
         /// <param name="product"></param>
         /// <returns></returns>
         [HttpPost]
-        public async Task<IActionResult> Create(Product product)
+        public async Task<IActionResult> Create([FromForm] ProductCreateDto pcdto)
         {
-            await _context.Products.AddAsync(product);
+            bool IsExistProd = _context.Products.Any(c => c.Name.Trim().ToLower() == pcdto.Name.Trim().ToLower());
+            if (IsExistProd) return StatusCode(600, "this category already exist");
+            if (pcdto.Photo == null)
+            {
+                return StatusCode(601, "Select photo with product");
+            }
+            if (!pcdto.Photo.IsImage())
+            {
+                return StatusCode(602, "only photo");
+            }
+            if (pcdto.Photo.ValidSize(200))
+            {
+                return StatusCode(603, "file Oversize");
+            }
+            Product newProduct = new Product()
+            {
+                Name = pcdto.Name,
+                Description = pcdto.Description,
+                IsActive = pcdto.IsActive,
+                Price = pcdto.Price,
+                ImgUrl = pcdto.Photo.SaveImage(_env, "img"),
+                CreatedAt = DateTime.Now,
+                Count = pcdto.StockCount,
+
+            };
+            await _context.Products.AddAsync(newProduct);
             await _context.SaveChangesAsync();
-            return StatusCode(201, product);
+            return StatusCode(201, "Product Created");
         }
         /// <summary>
         /// update product
         /// </summary>
         /// <param name="product"></param>
         /// <returns></returns>
-        [HttpPut]
-        public async Task<IActionResult> Update(Product product)
+        [HttpPut("{id}")]
+        public async Task<IActionResult> Update(int id, ProductUpdateDto productUpdateDto)
         {
-            Product dbProd = await _context.Products.FirstOrDefaultAsync(p => p.Id == product.Id);
+            Product dbProd = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
             if (dbProd == null) return StatusCode(404, "product not found");
-            dbProd.Price = product.Price;
-            dbProd.Name = product.Name;
-            dbProd.IsActive = product.IsActive;
+            if (productUpdateDto.Photo == null)
+            {
+                dbProd.ImgUrl = dbProd.ImgUrl;
+            }
+            else 
+            {
+                Product dbProductName = await _context.Products.FirstOrDefaultAsync(p => p.Name.Trim().ToLower() == productUpdateDto.Name.Trim().ToLower());
+                if (dbProductName != null)
+                {
+                    if (dbProductName.Name.Trim().ToLower() != dbProd.Name.Trim().ToLower())
+                    {
+                        return StatusCode(603,"this product already exist");
+                    }
+                }
+                if (!productUpdateDto.Photo.IsImage())
+                {
+                    return StatusCode(602, "only photo");
+                }
+                if (productUpdateDto.Photo.ValidSize(200))
+                {
+                    return StatusCode(603, "file Oversize");
+                }
+                dbProd.ImgUrl = productUpdateDto.Photo.SaveImage(_env, "img");
+            }
+            dbProd.Price = productUpdateDto.Price;
+            dbProd.Name = productUpdateDto.Name;
+            dbProd.IsActive = productUpdateDto.IsActive;
+            dbProd.Description = productUpdateDto.Description;
+            dbProd.Count=productUpdateDto.Count;
+            dbProd.UpdatedAt = DateTime.Now;
             await _context.SaveChangesAsync();
             return Ok($"id: {dbProd.Id}, product Updated");
         }
         /// <summary>
-        /// Edit Is Active prop of products
+        /// Edit price of products
         /// </summary>
         /// <param name="id"></param>
         /// <param name="isActive"></param>
         /// <returns></returns>
         [HttpPatch("{id}")]
-        public async Task<IActionResult> EditIsActive(int id, bool isActive)
+        public async Task<IActionResult> EditIsActive(int id, decimal price)
         {
             Product dbProd = _context.Products.FirstOrDefault(p => p.Id == id);
             if (dbProd == null) return NotFound();
-            dbProd.IsActive = isActive;
+            dbProd.Price = price;
             await _context.SaveChangesAsync();
-            return StatusCode(200, $"id:{dbProd.Id} isActive editing {isActive}");
+            return StatusCode(200, $"id:{dbProd.Id} isActive editing newprice= {price}");
         }
+        /// <summary>
+        /// Delete Product by id
+        /// </summary>
+        /// <param name="id"></param>
+        /// <returns></returns>
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
             Product dbProd = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
-            if(dbProd==null) return NotFound();
-            _context.Products.Remove(dbProd);
+            if (dbProd == null) return NotFound();
+            string path = Path.Combine(_env.WebRootPath, "img", dbProd.ImgUrl);
+
+            Helpers.Helpers.DeleteImage(path);
+
+            dbProd.IsDeleted = true;
             await _context.SaveChangesAsync();
-            return Ok($"{id} product Deleted");
+           
+            return Ok($"Id:{id} product Deleted");
 
         }
 
