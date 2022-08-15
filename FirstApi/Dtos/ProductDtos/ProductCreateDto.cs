@@ -18,6 +18,7 @@ namespace FirstApi.Dtos.ProductDtos
     {
         public ProductCreateDtoValidator()
         {
+            RuleFor(p => p.Photo).NotEmpty().WithMessage("Change the foto for product");
             RuleFor(p => p.Name).NotEmpty().WithMessage("don't Empty").MaximumLength(10).WithMessage("maximum character 10");
             RuleFor(p => p.Description).NotEmpty().WithMessage("don't Empty").MinimumLength(10).WithMessage("minimum character 10");
             RuleFor(p => p.IsActive).NotEmpty().WithMessage("don't Empty");
