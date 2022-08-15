@@ -2,6 +2,7 @@
 using FirstApi.Data.Entities;
 using FirstApi.Dtos.CategoryDtos;
 using FirstApi.Extentions;
+using FirstApi.Helpers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -38,12 +39,11 @@ namespace FirstApi.Controllers
                 {
                     Name = c.Name,
                     Description = c.Description,
-                    ImgUrl = c.ImgUrl,
+                    ImgUrl = Path.Combine(Request.Path,"/", "img/", c.ImgUrl),
                     IsActive = c.IsActive,
-
                 })
-                .AsQueryable().ToListAsync();
-            CategoryListDto listcategory = new CategoryListDto()
+                .AsQueryable().AsNoTracking().ToListAsync();
+            ListDto<CategoryReturnDto> listcategory = new ListDto<CategoryReturnDto>()
             {
                 items = categories,
                 TotalCount = categories.Count
@@ -62,8 +62,7 @@ namespace FirstApi.Controllers
             if (id == null) RedirectToAction("GetAll");
 
             Category dbCategory = await _context.Categories
-                .Where(c => c.IsDeleted == false)
-                .FirstOrDefaultAsync(c => c.Id == id);
+                .FirstOrDefaultAsync(c => c.Id == id && c.IsDeleted == false);
 
             if (dbCategory == null) return StatusCode(404, "Category Not Found");
 
@@ -72,7 +71,7 @@ namespace FirstApi.Controllers
                 Name = dbCategory.Name,
                 Description = dbCategory.Description,
                 IsActive = dbCategory.IsActive,
-                ImgUrl = dbCategory.ImgUrl,
+                ImgUrl = Path.Combine(Request.Path,"/", "img/", dbCategory.ImgUrl),
             };
 
             return StatusCode(200, categoryReturnDto);
@@ -123,21 +122,18 @@ namespace FirstApi.Controllers
         {
             Category dbCategory = await _context.Categories.FirstOrDefaultAsync(p => p.Id == id);
             if (dbCategory == null) return StatusCode(404, "category not found");
-            
+
             if (categoryUpdate.Photo == null)
             {
                 dbCategory.ImgUrl = dbCategory.ImgUrl;
             }
-            else
+            bool dbCategoryNameExist = await _context.Categories.AnyAsync(c => c.Name.Trim().ToLower() == categoryUpdate.Name.Trim().ToLower() && c.Id != dbCategory.Id);
+            if (dbCategoryNameExist)
             {
-                Category dbCategoryName = await _context.Categories.FirstOrDefaultAsync(p => p.Name.Trim().ToLower() == categoryUpdate.Name.Trim().ToLower());
-                if (dbCategoryName != null)
-                {
-                    if (dbCategoryName.Name.Trim().ToLower() != dbCategory.Name.Trim().ToLower())
-                    {
-                        return StatusCode(603, "this product already exist");
-                    }
-                }
+                return StatusCode(603, "this product already exist");
+            }
+            if (categoryUpdate.Photo != null)
+            {
                 if (!categoryUpdate.Photo.IsImage())
                 {
                     return StatusCode(602, "only photo");
@@ -146,15 +142,17 @@ namespace FirstApi.Controllers
                 {
                     return StatusCode(603, "file Oversize");
                 }
+                string path = Path.Combine(_env.WebRootPath, "img", dbCategory.ImgUrl);
+                Helpers.Helpers.DeleteImage(path);
                 dbCategory.ImgUrl = categoryUpdate.Photo.SaveImage(_env, "img");
             }
-           
+
             dbCategory.Name = categoryUpdate.Name;
             dbCategory.IsActive = categoryUpdate.IsActive;
             dbCategory.Description = categoryUpdate.Description;
             dbCategory.UpdatedAt = DateTime.Now;
             await _context.SaveChangesAsync();
-            return Ok($"id:, category Updated");
+            return StatusCode(201, $"id: {id} category Updated");
         }
         /// <summary>
         /// Delete Category

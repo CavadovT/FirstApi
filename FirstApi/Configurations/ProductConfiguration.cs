@@ -12,10 +12,10 @@ namespace FirstApi.Configurations
             builder.Property(p => p.Name).IsRequired(true).HasMaxLength(10);
             builder.Property(p => p.Description).IsRequired(true).HasMaxLength(100);
             builder.Property(p => p.Price).HasColumnType("decimal(18,2)");
+            builder.Property(p => p.DiscountPrice).HasDefaultValue(0).HasColumnType("decimal(18,2)");
             builder.Property(p=>p.IsDeleted).HasDefaultValue(false);
             builder.Property(p=>p.UpdatedAt).HasDefaultValue(null);
             builder.Property(p=>p.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
-            builder.Property(p => p.ImgUrl).IsRequired(true);
             builder.Property(p=>p.Count).HasDefaultValue(0);
         }
     }

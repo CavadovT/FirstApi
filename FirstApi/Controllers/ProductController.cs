@@ -2,6 +2,7 @@
 using FirstApi.Data.Entities;
 using FirstApi.Dtos.ProductDtos;
 using FirstApi.Extentions;
+using FirstApi.Helpers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -27,19 +28,32 @@ namespace FirstApi.Controllers
             _env = environment;
         }
 
+        /// <summary>
+        /// Get all products
+        /// </summary>
+        /// <returns></returns>
+
         [HttpGet]
         public async Task<IActionResult> GetAll()
         {
-            List<ProductReturnDto> products = await _context.Products.Where(p=>p.IsDeleted==false).Select(p => new ProductReturnDto
-            {
-                Name = p.Name,
-                Price = p.Price,
-                ImgUrl=p.ImgUrl,
-                Description = p.Description,
-                StockCount=p.Count,
-                IsActive = p.IsActive,
-            }).AsQueryable().ToListAsync();
-            ProductListDto productListDto = new ProductListDto()
+            List<ProductReturnDto> products = await _context.Products
+                .Include(p => p.Category)
+                .Where(p => p.IsDeleted == false)
+                .Select(p =>
+
+                new ProductReturnDto
+                {
+                    Name = p.Name,
+                    Price = p.Price,
+                    Description = p.Description,
+                    StockCount = p.Count,
+                    IsActive = p.IsActive,
+                    CategoryName = p.Category.Name,
+                    Imgurl = Path.Combine(Request.Path,"/", "img/", p.ImgUrl),
+                }
+                ).AsQueryable().AsNoTracking().ToListAsync();
+
+            ListDto<ProductReturnDto> productListDto = new ListDto<ProductReturnDto>()
             {
                 items = products,
                 TotalCount = products.Count,
@@ -58,19 +72,23 @@ namespace FirstApi.Controllers
             if (id == null) RedirectToAction("GetAll");
 
             Product dbProd = await _context.Products
-                .Where(p => p.IsActive)
-                .FirstOrDefaultAsync(p => p.Id == id);
+                .Include(p => p.Category)
+                .FirstOrDefaultAsync(p => p.Id == id && p.IsDeleted == false);
 
             if (dbProd == null) return StatusCode(404, "Product Not Found");
 
             ProductReturnDto productReturnDto = new ProductReturnDto()
             {
                 Name = dbProd.Name,
+                Description = dbProd.Description,
+                CategoryName = dbProd.Category.Name,
                 Price = dbProd.Price,
+                Imgurl = Path.Combine(Request.Path,"/", "img/", dbProd.ImgUrl),
+                StockCount = dbProd.Count,
                 IsActive = dbProd.IsActive,
             };
 
-            return StatusCode(200, dbProd);
+            return StatusCode(200, productReturnDto);
         }
         /// <summary>
         /// Create action
@@ -103,7 +121,7 @@ namespace FirstApi.Controllers
                 ImgUrl = pcdto.Photo.SaveImage(_env, "img"),
                 CreatedAt = DateTime.Now,
                 Count = pcdto.StockCount,
-
+                CategoryId = pcdto.CategoryId,
             };
             await _context.Products.AddAsync(newProduct);
             await _context.SaveChangesAsync();
@@ -117,22 +135,16 @@ namespace FirstApi.Controllers
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, ProductUpdateDto productUpdateDto)
         {
-            Product dbProd = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+            Product dbProd = await _context.Products.FirstOrDefaultAsync(p => p.Id == id && p.IsDeleted == false);
             if (dbProd == null) return StatusCode(404, "product not found");
-            if (productUpdateDto.Photo == null)
+
+            bool dbProductNameExist = await _context.Products.AnyAsync(p => p.Name.Trim().ToLower() == productUpdateDto.Name.Trim().ToLower() && p.Id != dbProd.Id);
+            if (dbProductNameExist)
             {
-                dbProd.ImgUrl = dbProd.ImgUrl;
+                return StatusCode(603, "this product already exist");
             }
-            else 
+            if (productUpdateDto.Photo != null)
             {
-                Product dbProductName = await _context.Products.FirstOrDefaultAsync(p => p.Name.Trim().ToLower() == productUpdateDto.Name.Trim().ToLower());
-                if (dbProductName != null)
-                {
-                    if (dbProductName.Name.Trim().ToLower() != dbProd.Name.Trim().ToLower())
-                    {
-                        return StatusCode(603,"this product already exist");
-                    }
-                }
                 if (!productUpdateDto.Photo.IsImage())
                 {
                     return StatusCode(602, "only photo");
@@ -141,17 +153,21 @@ namespace FirstApi.Controllers
                 {
                     return StatusCode(603, "file Oversize");
                 }
+                string path = Path.Combine(_env.WebRootPath, "img", dbProd.ImgUrl);
+                Helpers.Helpers.DeleteImage(path);
                 dbProd.ImgUrl = productUpdateDto.Photo.SaveImage(_env, "img");
             }
             dbProd.Price = productUpdateDto.Price;
             dbProd.Name = productUpdateDto.Name;
             dbProd.IsActive = productUpdateDto.IsActive;
             dbProd.Description = productUpdateDto.Description;
-            dbProd.Count=productUpdateDto.Count;
+            dbProd.CategoryId = productUpdateDto.CategroyId;
+            dbProd.Count = productUpdateDto.Count;
             dbProd.UpdatedAt = DateTime.Now;
             await _context.SaveChangesAsync();
             return Ok($"id: {dbProd.Id}, product Updated");
         }
+
         /// <summary>
         /// Edit price of products
         /// </summary>
@@ -161,7 +177,7 @@ namespace FirstApi.Controllers
         [HttpPatch("{id}")]
         public async Task<IActionResult> EditIsActive(int id, decimal price)
         {
-            Product dbProd = _context.Products.FirstOrDefault(p => p.Id == id);
+            Product dbProd = _context.Products.FirstOrDefault(p => p.Id == id && p.IsDeleted == false);
             if (dbProd == null) return NotFound();
             dbProd.Price = price;
             await _context.SaveChangesAsync();
@@ -175,7 +191,7 @@ namespace FirstApi.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            Product dbProd = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+            Product dbProd = await _context.Products.FirstOrDefaultAsync(p => p.Id == id && p.IsDeleted == false);
             if (dbProd == null) return NotFound();
             string path = Path.Combine(_env.WebRootPath, "img", dbProd.ImgUrl);
 
@@ -183,7 +199,7 @@ namespace FirstApi.Controllers
 
             dbProd.IsDeleted = true;
             await _context.SaveChangesAsync();
-           
+
             return Ok($"Id:{id} product Deleted");
 
         }
