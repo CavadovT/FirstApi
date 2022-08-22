@@ -1,4 +1,6 @@
-﻿using FirstApi.Data;
+﻿using AutoMapper;
+using AutoMapper.QueryableExtensions;
+using FirstApi.Data;
 using FirstApi.Data.Entities;
 using FirstApi.Dtos.CategoryDtos;
 using FirstApi.Extentions;
@@ -20,14 +22,16 @@ namespace FirstApi.Controllers
     {
         private readonly AppDbContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly IMapper _maper;
 
-        public CategoryController(AppDbContext context, IWebHostEnvironment environment)
+        public CategoryController(AppDbContext context, IWebHostEnvironment environment, IMapper maper)
         {
             _context = context;
             _env = environment;
+            _maper = maper;
         }
         /// <summary>
-        /// Get All Method for Category
+        /// Get all Categories
         /// </summary>
         /// <returns></returns>
         [HttpGet]
@@ -35,13 +39,14 @@ namespace FirstApi.Controllers
         {
             List<CategoryReturnDto> categories = await _context.Categories
                 .Where(c => c.IsDeleted == false)
-                .Select(c => new CategoryReturnDto
-                {
-                    Name = c.Name,
-                    Description = c.Description,
-                    ImgUrl = Path.Combine(Request.Path,"/", "img/", c.ImgUrl),
-                    IsActive = c.IsActive,
-                })
+                .ProjectTo<CategoryReturnDto>(_maper.ConfigurationProvider)
+                //c => new CategoryReturnDto
+                //{
+                //    Name = c.Name,
+                //    Description = c.Description,
+                //    ImgUrl = Path.Combine(Request.Path,"/", "img/", c.ImgUrl),
+                //    IsActive = c.IsActive,
+                //})
                 .AsQueryable().AsNoTracking().ToListAsync();
             ListDto<CategoryReturnDto> listcategory = new ListDto<CategoryReturnDto>()
             {
@@ -50,12 +55,11 @@ namespace FirstApi.Controllers
             };
             return Ok(listcategory);
         }
-        /// <summary>
-        /// Get one category by id
-        /// </summary>
-        /// <param name="id"></param>
-        /// <param name="categoryReturn"></param>
-        /// <returns></returns>
+      /// <summary>
+      /// Get One Category
+      /// </summary>
+      /// <param name="id"></param>
+      /// <returns></returns>
         [HttpGet("{id}")]
         public async Task<IActionResult> GetOne(int? id)
         {
@@ -112,11 +116,11 @@ namespace FirstApi.Controllers
             return StatusCode(201, "Category Created");
         }
         /// <summary>
-        /// Update Category by id
+        /// Category Update 
         /// </summary>
         /// <param name="id"></param>
-        /// <param name="productUpdateDto"></param>
-        /// <returns></returns>
+        /// <param name="categoryUpdate"></param>
+        /// <returns>salam</returns>
         [HttpPut("{id}")]
         public async Task<IActionResult> Update(int id, CategoryUpdateDto categoryUpdate)
         {

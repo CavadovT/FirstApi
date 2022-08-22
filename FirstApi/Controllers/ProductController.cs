@@ -1,4 +1,6 @@
-﻿using FirstApi.Data;
+﻿using AutoMapper;
+using AutoMapper.QueryableExtensions;
+using FirstApi.Data;
 using FirstApi.Data.Entities;
 using FirstApi.Dtos.ProductDtos;
 using FirstApi.Extentions;
@@ -20,12 +22,14 @@ namespace FirstApi.Controllers
     {
         private readonly AppDbContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly IMapper _maper;
 
 
-        public ProductController(AppDbContext context, IWebHostEnvironment environment)
+        public ProductController(AppDbContext context, IWebHostEnvironment environment, IMapper maper)
         {
             _context = context;
             _env = environment;
+            _maper = maper;
         }
 
         /// <summary>
@@ -39,19 +43,21 @@ namespace FirstApi.Controllers
             List<ProductReturnDto> products = await _context.Products
                 .Include(p => p.Category)
                 .Where(p => p.IsDeleted == false)
-                .Select(p =>
+                .ProjectTo<ProductReturnDto>(_maper.ConfigurationProvider
+                //p =>
 
-                new ProductReturnDto
-                {
-                    Name = p.Name,
-                    Price = p.Price,
-                    Description = p.Description,
-                    StockCount = p.Count,
-                    IsActive = p.IsActive,
-                    CategoryName = p.Category.Name,
-                    Imgurl = Path.Combine(Request.Path,"/", "img/", p.ImgUrl),
-                }
+                //new ProductReturnDto
+                //{
+                //    Name = p.Name,
+                //    Price = p.Price,
+                //    Description = p.Description,
+                //    StockCount = p.Count,
+                //    IsActive = p.IsActive,
+                //    CategoryName = p.Category.Name,
+                //    Imgurl = Path.Combine(Request.Path,"/", "img/", p.ImgUrl),
+                //}
                 ).AsQueryable().AsNoTracking().ToListAsync();
+
 
             ListDto<ProductReturnDto> productListDto = new ListDto<ProductReturnDto>()
             {
